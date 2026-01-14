@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BreathScope</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f2f4f7;
+  margin: 0;
+  padding: 20px;
+}
+.card {
+  max-width: 480px;
+  margin: auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+}
+h1 { margin-top: 0; }
+label { font-size: 14px; }
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+button {
+  background: #005fcc;
+  color: #fff;
+  border: none;
+  font-size: 16px;
+}
+button:disabled { background: #aaa; }
+.result, .chart { margin-top: 15px; }
+small { color: #666; }
+hr { margin: 20px 0; }
+</style>
+</head>
+
+<body>
+<div class="card">
+
+<select id="lang" onchange="setLanguage()">
+  <option value="en">English</option>
+  <option value="de">Deutsch</option>
+</select>
+
+<h1 id="title">BreathScope</h1>
+<p id="subtitle">Microphone-based respiratory screening</p>
+
+<label id="ageLabel">Age</label>
+<input type="number" id="age" placeholder="Years">
+
+<label id="heightLabel">Height</label>
+<input type="number" id="height" placeholder="cm">
+
+<button id="startBtn">Start Breathing Test</button>
+
+<div class="result" id="result"></div>
+<canvas id="chart" width="400" height="150" class="chart"></canvas>
+
+<hr>
+
+<label>
+<input type="checkbox" id="clinicalMode">
+ <span id="clinicalLabel">Clinical validation mode</span>
+</label>
+
+<div id="clinicalInput" style="display:none;">
+  <label>Reference FEV₁ (spirometer)</label>
+  <input type="number" id="refFEV1" placeholder="Liters">
+</div>
+
+<hr>
+
+<small id="disclaimer"></small>
+
+<hr>
+<small>
+© IP & Concept: <b>Moustafa Ali</b><br>
+Agentic@virtualcaresolution<br>
+dptmostafa@gmail.com
+</small>
+
+</div>
+
+<script>
+/* ---------------- LANGUAGE ---------------- */
+const text = {
+en: {
+ title: "BreathScope",
+ subtitle: "Microphone-based respiratory screening",
+ age: "Age",
+ height: "Height",
+ start: "Start Breathing Test",
+ clinical: "Clinical validation mode",
+ disclaimer:
+ "Not a medical device. This tool provides screening and trend monitoring only and must not be used for diagnosis or treatment decisions."
+},
+de: {
+ title: "BreathScope",
+ subtitle: "Mikrofonbasierte Atemfunktions-Screening",
+ age: "Alter",
+ height: "Körpergröße",
+ start: "Atemtest starten",
+ clinical: "Klinischer Validierungsmodus",
+ disclaimer:
+ "Kein Medizinprodukt. Dieses Tool dient ausschließlich dem Screening und der Verlaufskontrolle und ersetzt keine ärztliche Diagnostik."
+}
+};
+
+function setLanguage() {
+ const l = lang.value;
+ title.innerText = text[l].title;
+ subtitle.innerText = text[l].subtitle;
+ ageLabel.innerText = text[l].age;
+ heightLabel.innerText = text[l].height;
+ startBtn.innerText = text[l].start;
+ clinicalLabel.innerText = text[l].clinical;
+ disclaimer.innerText = text[l].disclaimer;
+}
+setLanguage();
+
+/* ---------------- AUDIO ---------------- */
+let audioContext, analyser, dataArray;
+let recording = false, peak = 0, startTime;
+
+startBtn.onclick = async () => {
+ peak = 0;
+ startTime = performance.now();
+ result.innerHTML = "Blow out hard for 5 seconds…";
+ startBtn.disabled = true;
+
+ audioContext = new (window.AudioContext || window.webkitAudioContext)();
+ const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+ const mic = audioContext.createMediaStreamSource(stream);
+ analyser = audioContext.createAnalyser();
+ analyser.fftSize = 2048;
+ dataArray = new Uint8Array(analyser.fftSize);
+ mic.connect(analyser);
+
+ recording = true;
+ measure();
+ setTimeout(stopTest, 5000);
+};
+
+function measure() {
+ if (!recording) return;
+ analyser.getByteTimeDomainData(dataArray);
+ let sum = 0;
+ for (let i = 0; i < dataArray.length; i++) {
+   let v = (dataArray[i] - 128) / 128;
+   sum += v * v;
+ }
+ let rms = Math.sqrt(sum / dataArray.length);
+ if (rms > peak) peak = rms;
+ requestAnimationFrame(measure);
+}
+
+function stopTest() {
+ recording = false;
+ startBtn.disabled = false;
+
+ const ageVal = age.value || 40;
+ const heightVal = height.value || 170;
+
+ const pef = peak * 800;
+ const fev1 = pef * 0.004 * (heightVal / 170) * (40 / ageVal);
+
+ const entry = { date: Date.now(), fev1 };
+ saveTrend(entry);
+ drawChart();
+
+ result.innerHTML = `
+ <b>Estimated results</b><br>
+ PEF (relative): ${pef.toFixed(0)}<br>
+ FEV₁ (estimated): ${fev1.toFixed(2)} L
+ `;
+
+ if (clinicalMode.checked && refFEV1.value) {
+   const diff = (fev1 - refFEV1.value).toFixed(2);
+   result.innerHTML += `<br><br>
+   Validation ΔFEV₁: ${diff} L`;
+ }
+}
+
+/* ---------------- TREND ---------------- */
+function saveTrend(entry) {
+ const data = JSON.parse(localStorage.getItem("breathscope") || "[]");
+ data.push(entry);
+ localStorage.setItem("breathscope", JSON.stringify(data));
+}
+
+function drawChart() {
+ const c = chart.getContext("2d");
+ const data = JSON.parse(localStorage.getItem("breathscope") || "[]");
+ c.clearRect(0,0,400,150);
+ if (data.length < 2) return;
+
+ const max = Math.max(...data.map(d => d.fev1));
+ c.beginPath();
+ data.forEach((d,i) => {
+   const x = (i/(data.length-1))*400;
+   const y = 150 - (d.fev1/max)*140;
+   i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+ });
+ c.strokeStyle = "#005fcc";
+ c.lineWidth = 2;
+ c.stroke();
+}
+
+/* ---------------- CLINICAL MODE ---------------- */
+clinicalMode.onchange = () => {
+ clinicalInput.style.display = clinicalMode.checked ? "block" : "none";
+};
+</script>
+</body>
+</html>
