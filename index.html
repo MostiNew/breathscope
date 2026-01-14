@@ -37,7 +37,8 @@ button {
   font-size: 16px;
 }
 button:disabled { background: #aaa; }
-.result, .chart { margin-top: 15px; }
+.result { margin-top: 12px; }
+.chart { margin-top: 10px; }
 small { color: #666; }
 hr { margin: 20px 0; }
 </style>
@@ -63,13 +64,25 @@ hr { margin: 20px 0; }
 <button id="startBtn">Start Breathing Test</button>
 
 <div class="result" id="result"></div>
+
+<div id="visualResult" style="display:none;text-align:center;">
+  <svg width="200" height="160" viewBox="0 0 200 160">
+    <rect x="97" y="0" width="6" height="25" fill="#666"/>
+    <path d="M90 20 C60 30,50 80,60 130 L90 130 Z" fill="#eee" stroke="#444"/>
+    <rect id="leftFill" x="60" y="130" width="30" height="0" fill="#4caf50"/>
+    <path d="M110 20 C140 30,150 80,140 130 L110 130 Z" fill="#eee" stroke="#444"/>
+    <rect id="rightFill" x="110" y="130" width="30" height="0" fill="#4caf50"/>
+  </svg>
+  <div id="statusText" style="font-weight:bold;"></div>
+</div>
+
 <canvas id="chart" width="400" height="150" class="chart"></canvas>
 
 <hr>
 
 <label>
 <input type="checkbox" id="clinicalMode">
- <span id="clinicalLabel">Clinical validation mode</span>
+<span id="clinicalLabel">Clinical validation mode</span>
 </label>
 
 <div id="clinicalInput" style="display:none;">
@@ -91,133 +104,145 @@ dptmostafa@gmail.com
 </div>
 
 <script>
-/* ---------------- LANGUAGE ---------------- */
+/* ---------- LANGUAGE ---------- */
 const text = {
 en: {
- title: "BreathScope",
- subtitle: "Microphone-based respiratory screening",
- age: "Age",
- height: "Height",
- start: "Start Breathing Test",
- clinical: "Clinical validation mode",
- disclaimer:
- "Not a medical device. This tool provides screening and trend monitoring only and must not be used for diagnosis or treatment decisions."
+ title:"BreathScope",
+ subtitle:"Microphone-based respiratory screening",
+ age:"Age",
+ height:"Height",
+ start:"Start Breathing Test",
+ clinical:"Clinical validation mode",
+ disclaimer:"Not a medical device. Screening and trend monitoring only. Not for diagnosis or treatment."
 },
 de: {
- title: "BreathScope",
- subtitle: "Mikrofonbasierte Atemfunktions-Screening",
- age: "Alter",
- height: "Körpergröße",
- start: "Atemtest starten",
- clinical: "Klinischer Validierungsmodus",
- disclaimer:
- "Kein Medizinprodukt. Dieses Tool dient ausschließlich dem Screening und der Verlaufskontrolle und ersetzt keine ärztliche Diagnostik."
+ title:"BreathScope",
+ subtitle:"Mikrofonbasiertes Atemfunktions-Screening",
+ age:"Alter",
+ height:"Körpergröße",
+ start:"Atemtest starten",
+ clinical:"Klinischer Validierungsmodus",
+ disclaimer:"Kein Medizinprodukt. Ausschließlich Screening und Verlaufskontrolle. Keine Diagnostik."
 }
 };
 
-function setLanguage() {
- const l = lang.value;
- title.innerText = text[l].title;
- subtitle.innerText = text[l].subtitle;
- ageLabel.innerText = text[l].age;
- heightLabel.innerText = text[l].height;
- startBtn.innerText = text[l].start;
- clinicalLabel.innerText = text[l].clinical;
- disclaimer.innerText = text[l].disclaimer;
+function setLanguage(){
+ const l=lang.value;
+ title.innerText=text[l].title;
+ subtitle.innerText=text[l].subtitle;
+ ageLabel.innerText=text[l].age;
+ heightLabel.innerText=text[l].height;
+ startBtn.innerText=text[l].start;
+ clinicalLabel.innerText=text[l].clinical;
+ disclaimer.innerText=text[l].disclaimer;
 }
 setLanguage();
 
-/* ---------------- AUDIO ---------------- */
+/* ---------- AUDIO ---------- */
 let audioContext, analyser, dataArray;
-let recording = false, peak = 0, startTime;
+let recording=false, peak=0;
 
-startBtn.onclick = async () => {
- peak = 0;
- startTime = performance.now();
- result.innerHTML = "Blow out hard for 5 seconds…";
- startBtn.disabled = true;
+startBtn.onclick=async()=>{
+ peak=0;
+ result.innerHTML="Blow out hard for 5 seconds…";
+ startBtn.disabled=true;
 
- audioContext = new (window.AudioContext || window.webkitAudioContext)();
- const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
- const mic = audioContext.createMediaStreamSource(stream);
- analyser = audioContext.createAnalyser();
- analyser.fftSize = 2048;
- dataArray = new Uint8Array(analyser.fftSize);
+ audioContext=new(window.AudioContext||window.webkitAudioContext)();
+ const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+ const mic=audioContext.createMediaStreamSource(stream);
+ analyser=audioContext.createAnalyser();
+ analyser.fftSize=2048;
+ dataArray=new Uint8Array(analyser.fftSize);
  mic.connect(analyser);
 
- recording = true;
+ recording=true;
  measure();
- setTimeout(stopTest, 5000);
+ setTimeout(stopTest,5000);
 };
 
-function measure() {
- if (!recording) return;
+function measure(){
+ if(!recording)return;
  analyser.getByteTimeDomainData(dataArray);
- let sum = 0;
- for (let i = 0; i < dataArray.length; i++) {
-   let v = (dataArray[i] - 128) / 128;
-   sum += v * v;
+ let sum=0;
+ for(let i=0;i<dataArray.length;i++){
+  let v=(dataArray[i]-128)/128;
+  sum+=v*v;
  }
- let rms = Math.sqrt(sum / dataArray.length);
- if (rms > peak) peak = rms;
+ peak=Math.max(peak,Math.sqrt(sum/dataArray.length));
  requestAnimationFrame(measure);
 }
 
-function stopTest() {
- recording = false;
- startBtn.disabled = false;
+function stopTest(){
+ recording=false;
+ startBtn.disabled=false;
 
- const ageVal = age.value || 40;
- const heightVal = height.value || 170;
+ const ageVal=age.value||40;
+ const heightVal=height.value||170;
 
- const pef = peak * 800;
- const fev1 = pef * 0.004 * (heightVal / 170) * (40 / ageVal);
+ const pef=peak*800;
+ const fev1=pef*0.004*(heightVal/170)*(40/ageVal);
+ const expected=0.04*heightVal-0.03*ageVal-2.0;
+ const percent=Math.max(0,Math.min(100,(fev1/expected)*100));
 
- const entry = { date: Date.now(), fev1 };
- saveTrend(entry);
- drawChart();
+ let color="#4caf50",status="Within expected range (relative)";
+ if(percent<80){color="#ffc107";status="Reduced (relative)";}
+ if(percent<50){color="#f44336";status="Markedly reduced (relative)";}
 
- result.innerHTML = `
- <b>Estimated results</b><br>
+ result.innerHTML=`
+ <b>Estimated Results</b><br>
  PEF (relative): ${pef.toFixed(0)}<br>
- FEV₁ (estimated): ${fev1.toFixed(2)} L
+ FEV₁ (estimated): ${fev1.toFixed(2)} L<br>
+ FEV₁ (% expected): ${percent.toFixed(0)}%
  `;
 
- if (clinicalMode.checked && refFEV1.value) {
-   const diff = (fev1 - refFEV1.value).toFixed(2);
-   result.innerHTML += `<br><br>
-   Validation ΔFEV₁: ${diff} L`;
+ document.getElementById("visualResult").style.display="block";
+ statusText.innerText=status;
+ statusText.style.color=color;
+
+ const fill=110*(percent/100);
+ const y=130-fill;
+ ["leftFill","rightFill"].forEach(id=>{
+  const el=document.getElementById(id);
+  el.setAttribute("y",y);
+  el.setAttribute("height",fill);
+  el.setAttribute("fill",color);
+ });
+
+ saveTrend({date:Date.now(),fev1});
+ drawChart();
+
+ if(clinicalMode.checked && refFEV1.value){
+  result.innerHTML+=`<br><br>Validation ΔFEV₁: ${(fev1-refFEV1.value).toFixed(2)} L`;
  }
 }
 
-/* ---------------- TREND ---------------- */
-function saveTrend(entry) {
- const data = JSON.parse(localStorage.getItem("breathscope") || "[]");
- data.push(entry);
- localStorage.setItem("breathscope", JSON.stringify(data));
+/* ---------- TREND ---------- */
+function saveTrend(e){
+ const d=JSON.parse(localStorage.getItem("breathscope")||"[]");
+ d.push(e);
+ localStorage.setItem("breathscope",JSON.stringify(d));
 }
 
-function drawChart() {
- const c = chart.getContext("2d");
- const data = JSON.parse(localStorage.getItem("breathscope") || "[]");
+function drawChart(){
+ const c=chart.getContext("2d");
+ const d=JSON.parse(localStorage.getItem("breathscope")||"[]");
  c.clearRect(0,0,400,150);
- if (data.length < 2) return;
-
- const max = Math.max(...data.map(d => d.fev1));
+ if(d.length<2)return;
+ const max=Math.max(...d.map(x=>x.fev1));
  c.beginPath();
- data.forEach((d,i) => {
-   const x = (i/(data.length-1))*400;
-   const y = 150 - (d.fev1/max)*140;
-   i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+ d.forEach((x,i)=>{
+  const px=i/(d.length-1)*400;
+  const py=150-(x.fev1/max)*140;
+  i?c.lineTo(px,py):c.moveTo(px,py);
  });
- c.strokeStyle = "#005fcc";
- c.lineWidth = 2;
+ c.strokeStyle="#005fcc";
+ c.lineWidth=2;
  c.stroke();
 }
 
-/* ---------------- CLINICAL MODE ---------------- */
-clinicalMode.onchange = () => {
- clinicalInput.style.display = clinicalMode.checked ? "block" : "none";
+/* ---------- CLINICAL ---------- */
+clinicalMode.onchange=()=>{
+ clinicalInput.style.display=clinicalMode.checked?"block":"none";
 };
 </script>
 </body>
