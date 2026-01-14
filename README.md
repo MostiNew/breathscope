@@ -2,7 +2,7 @@ BreathScope – User Manual
 
 Version: Inspiration / Research Prototype
 Author & IP: Moustafa Ali
-Contact: dptmostafa@gmail.com | Agentic@virtualcaresolution
+Contact: dptmostafa@gmail.com | Agentic@virtualcaresolution.de
 
 ⸻
 
